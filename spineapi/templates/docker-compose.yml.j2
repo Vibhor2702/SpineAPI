@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  # FastAPI Application
+  {{ project_name }}-api:
+    build: .
+    container_name: {{ project_name }}-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL={% if database == 'postgresql' %}postgresql://postgres:password@{{ project_name }}-db:5432/{{ project_name }}{% else %}sqlite:///./{{ project_name }}.db{% endif %}
+      - REDIS_URL=redis://{{ project_name }}-redis:6379/0
+    volumes:
+      - ./logs:/app/logs
+      {% if database == 'sqlite' %}
+      - ./data:/app/data
+      {% endif %}
+    depends_on:
+      {% if database == 'postgresql' %}
+      - {{ project_name }}-db
+      {% endif %}
+      - {{ project_name }}-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  {% if database == 'postgresql' %}
+  # PostgreSQL Database
+  {{ project_name }}-db:
+    image: postgres:15-alpine
+    container_name: {{ project_name }}-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB={{ project_name }}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  {% endif %}
+  # Redis Cache
+  {{ project_name }}-redis:
+    image: redis:7-alpine
+    container_name: {{ project_name }}-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Prometheus Monitoring
+  {{ project_name }}-prometheus:
+    image: prom/prometheus:latest
+    container_name: {{ project_name }}-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+
+  # Grafana Dashboard
+  {{ project_name }}-grafana:
+    image: grafana/grafana:latest
+    container_name: {{ project_name }}-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - {{ project_name }}-prometheus
+    restart: unless-stopped
+
+networks:
+  default:
+    name: {{ project_name }}-network
+
+volumes:
+  {% if database == 'postgresql' %}
+  postgres_data:
+  {% endif %}
+  redis_data:
+  prometheus_data:
+  grafana_data:

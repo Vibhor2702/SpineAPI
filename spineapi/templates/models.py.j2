@@ -1,0 +1,84 @@
+"""
+SQLAlchemy Database Configuration and Models
+"""
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Text, create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+# Database configuration
+{% if database == 'postgresql' %}
+SQLALCHEMY_DATABASE_URL = "postgresql://user:password@localhost/{{ project_name }}"
+{% else %}
+SQLALCHEMY_DATABASE_URL = "sqlite:///./{{ project_name }}.db"
+{% endif %}
+
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    {% if database == 'sqlite' %}
+    connect_args={"check_same_thread": False},
+    {% endif %}
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
+
+
+def get_db():
+    """Database dependency for FastAPI."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# Database models
+{% for schema in schemas %}
+class {{ schema.class_name }}(Base):
+    """{{ schema.description or schema.class_name + ' model' }}"""
+    
+    __tablename__ = "{{ schema.table_name }}"
+    
+    {% for prop_name, prop_def in schema.properties.items() %}
+    {% set prop_type = schema.get_property_type(prop_name) %}
+    {% set is_required = schema.is_required(prop_name) %}
+    {% if prop_name == 'id' %}
+    {{ prop_name }} = Column(Integer, primary_key=True, index=True)
+    {% elif prop_type == 'str' %}
+    {{ prop_name }} = Column(String{% if prop_def.maxLength %}({{ prop_def.maxLength }}){% endif %}, {% if not is_required %}nullable=True{% else %}nullable=False{% endif %}{% if prop_def.get('example') %}, default="{{ prop_def.example }}"{% endif %})
+    {% elif prop_type == 'int' %}
+    {{ prop_name }} = Column(Integer, {% if not is_required %}nullable=True{% else %}nullable=False{% endif %}{% if prop_def.get('example') %}, default={{ prop_def.example }}{% endif %})
+    {% elif prop_type == 'float' %}
+    {{ prop_name }} = Column(Float, {% if not is_required %}nullable=True{% else %}nullable=False{% endif %}{% if prop_def.get('example') %}, default={{ prop_def.example }}{% endif %})
+    {% elif prop_type == 'bool' %}
+    {{ prop_name }} = Column(Boolean, {% if not is_required %}nullable=True{% else %}nullable=False{% endif %}{% if prop_def.get('default') is defined %}, default={{ prop_def.default }}{% endif %})
+    {% elif prop_type == 'datetime' %}
+    {{ prop_name }} = Column(DateTime, {% if not is_required %}nullable=True{% else %}nullable=False{% endif %}{% if prop_name in ['created_at', 'updated_at'] %}, default=datetime.utcnow{% endif %})
+    {% else %}
+    {{ prop_name }} = Column(Text, {% if not is_required %}nullable=True{% else %}nullable=False{% endif %})
+    {% endif %}
+    {% endfor %}
+    
+    {% if 'created_at' not in schema.properties %}
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    {% endif %}
+    {% if 'updated_at' not in schema.properties %}
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    {% endif %}
+
+    def __repr__(self):
+        return f"<{{ schema.class_name }}(id={self.id})>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert model instance to dictionary."""
+        return {
+            column.name: getattr(self, column.name)
+            for column in self.__table__.columns
+        }
+
+
+{% endfor %}

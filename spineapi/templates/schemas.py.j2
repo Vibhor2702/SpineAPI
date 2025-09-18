@@ -1,0 +1,57 @@
+"""
+Pydantic Schemas for Request/Response Validation
+"""
+from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
+
+{% for schema in schemas %}
+# {{ schema.class_name }} schemas
+class {{ schema.class_name }}Base(BaseModel):
+    """Base schema for {{ schema.class_name }}."""
+    {% for prop_name, prop_def in schema.properties.items() %}
+    {% if prop_name not in ['id', 'created_at', 'updated_at'] %}
+    {% set prop_type = schema.get_property_type(prop_name) %}
+    {% set is_required = schema.is_required(prop_name) %}
+    {{ prop_name }}: {% if not is_required %}Optional[{{ prop_type }}]{% else %}{{ prop_type }}{% endif %}{% if prop_def.get('description') %} = Field(description="{{ prop_def.description }}"){% endif %}
+    {% endif %}
+    {% endfor %}
+
+
+class {{ schema.class_name }}Create({{ schema.class_name }}Base):
+    """Schema for creating {{ schema.class_name }}."""
+    pass
+
+
+class {{ schema.class_name }}Update({{ schema.class_name }}Base):
+    """Schema for updating {{ schema.class_name }}."""
+    {% for prop_name, prop_def in schema.properties.items() %}
+    {% if prop_name not in ['id', 'created_at', 'updated_at'] %}
+    {% set prop_type = schema.get_property_type(prop_name) %}
+    {{ prop_name }}: Optional[{{ prop_type }}]{% if prop_def.get('description') %} = Field(description="{{ prop_def.description }}"){% endif %}
+    {% endif %}
+    {% endfor %}
+
+
+class {{ schema.class_name }}InDBBase({{ schema.class_name }}Base):
+    """Base schema for {{ schema.class_name }} in database."""
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class {{ schema.class_name }}({{ schema.class_name }}InDBBase):
+    """Schema for {{ schema.class_name }} response."""
+    pass
+
+
+class {{ schema.class_name }}InDB({{ schema.class_name }}InDBBase):
+    """Schema for {{ schema.class_name }} in database with all fields."""
+    pass
+
+
+{% endfor %}

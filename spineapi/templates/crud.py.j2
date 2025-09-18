@@ -1,0 +1,59 @@
+"""
+CRUD Operations for {{ schema.class_name }}
+"""
+from typing import List, Optional
+
+from sqlalchemy.orm import Session
+
+from .models import {{ schema.class_name }}
+from .schemas import {{ schema.class_name }}Create, {{ schema.class_name }}Update
+
+
+def get(db: Session, id: int) -> Optional[{{ schema.class_name }}]:
+    """Get {{ schema.class_name.lower() }} by ID."""
+    return db.query({{ schema.class_name }}).filter({{ schema.class_name }}.id == id).first()
+
+
+def get_multi(
+    db: Session, *, skip: int = 0, limit: int = 100
+) -> List[{{ schema.class_name }}]:
+    """Get multiple {{ schema.class_name.lower() }}s."""
+    return db.query({{ schema.class_name }}).offset(skip).limit(limit).all()
+
+
+def create(db: Session, *, obj_in: {{ schema.class_name }}Create) -> {{ schema.class_name }}:
+    """Create new {{ schema.class_name.lower() }}."""
+    db_obj = {{ schema.class_name }}(**obj_in.dict())
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
+
+
+def update(
+    db: Session,
+    *,
+    db_obj: {{ schema.class_name }},
+    obj_in: {{ schema.class_name }}Update
+) -> {{ schema.class_name }}:
+    """Update {{ schema.class_name.lower() }}."""
+    obj_data = obj_in.dict(exclude_unset=True)
+    for field, value in obj_data.items():
+        setattr(db_obj, field, value)
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
+
+
+def remove(db: Session, *, id: int) -> {{ schema.class_name }}:
+    """Delete {{ schema.class_name.lower() }}."""
+    obj = db.query({{ schema.class_name }}).get(id)
+    db.delete(obj)
+    db.commit()
+    return obj
+
+
+def count(db: Session) -> int:
+    """Count total {{ schema.class_name.lower() }}s."""
+    return db.query({{ schema.class_name }}).count()

@@ -1,0 +1,197 @@
+"""
+FastAPI Main Application Template
+"""
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
+from loguru import logger
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from sqlalchemy.orm import Session
+import uvicorn
+
+from .database import get_db, engine
+from .models import Base
+{% for schema in schemas %}
+from .schemas import {{ schema.class_name }}{% if schema.class_name + 'Create' in schemas %}, {{ schema.class_name }}Create{% endif %}{% if schema.class_name + 'Update' in schemas %}, {{ schema.class_name }}Update{% endif %}
+{% endfor %}
+{% for schema in schemas %}
+from .crud import {{ schema.name.lower() }}
+{% endfor %}
+
+# Prometheus metrics
+REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint'])
+REQUEST_DURATION = Histogram('http_request_duration_seconds', 'HTTP request duration')
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
+
+# FastAPI app initialization
+app = FastAPI(
+    title="{{ title }}",
+    description="{{ description }}",
+    version="{{ version }}",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+)
+
+# Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Configure appropriately for production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["*"],  # Configure appropriately for production
+)
+
+# Logging configuration
+logger.add("logs/api.log", rotation="1 day", retention="1 month", level="INFO")
+
+
+@app.middleware("http")
+async def prometheus_middleware(request, call_next):
+    """Middleware to collect Prometheus metrics."""
+    start_time = datetime.now()
+    
+    response = await call_next(request)
+    
+    # Record metrics
+    REQUEST_COUNT.labels(method=request.method, endpoint=request.url.path).inc()
+    REQUEST_DURATION.observe((datetime.now() - start_time).total_seconds())
+    
+    return response
+
+
+@app.middleware("http")
+async def logging_middleware(request, call_next):
+    """Middleware for request/response logging."""
+    start_time = datetime.now()
+    
+    logger.info(f"Request: {request.method} {request.url}")
+    
+    response = await call_next(request)
+    
+    duration = (datetime.now() - start_time).total_seconds()
+    logger.info(f"Response: {response.status_code} - {duration:.3f}s")
+    
+    return response
+
+
+# Health check endpoint
+@app.get("/health", tags=["health"])
+async def health_check():
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "version": "{{ version }}",
+    }
+
+
+# Metrics endpoint for Prometheus
+@app.get("/metrics", tags=["monitoring"])
+async def get_metrics():
+    """Prometheus metrics endpoint."""
+    return JSONResponse(
+        content=generate_latest().decode("utf-8"),
+        media_type=CONTENT_TYPE_LATEST,
+    )
+
+
+{% for endpoint in endpoints %}
+{% set schema_name = endpoint.get_success_response_schema() %}
+{% set model_name = schema_name.split('/')[-1] if schema_name and '$ref' in schema_name else None %}
+@app.{{ endpoint.method.lower() }}("{{ endpoint.path }}", tags={{ endpoint.tags if endpoint.tags else '["default"]' }})
+async def {{ endpoint.function_name }}(
+    {% for param in endpoint.path_params %}
+    {{ param.name }}: {{ param.schema.type if param.schema and param.schema.type else 'int' }},
+    {% endfor %}
+    {% for param in endpoint.query_params %}
+    {{ param.name }}: {{ 'Optional[' + param.schema.type + ']' if param.schema and param.schema.type else 'Optional[str]' }} = {{ param.schema.default if param.schema and 'default' in param.schema else 'None' }},
+    {% endfor %}
+    {% if endpoint.has_request_body %}
+    data: {{ model_name + 'Create' if model_name else 'dict' }},
+    {% endif %}
+    db: Session = Depends(get_db),
+):
+    """
+    {{ endpoint.summary or 'API endpoint' }}
+    
+    {{ endpoint.description or '' }}
+    """
+    try:
+        {% if endpoint.method.upper() == 'GET' and endpoint.path.endswith('}') %}
+        # Get single item by ID
+        {% set id_param = endpoint.path_params[0].name if endpoint.path_params else 'id' %}
+        result = {{ schema_name.lower() if schema_name else 'item' }}.get(db=db, id={{ id_param }})
+        if not result:
+            raise HTTPException(status_code=404, detail="Item not found")
+        return result
+        {% elif endpoint.method.upper() == 'GET' %}
+        # Get list of items
+        {% for param in endpoint.query_params %}
+        {% if param.name == 'limit' %}
+        limit = {{ param.name }} or 10
+        {% elif param.name == 'offset' %}
+        offset = {{ param.name }} or 0
+        {% endif %}
+        {% endfor %}
+        items = {{ schema_name.lower() if schema_name else 'item' }}.get_multi(db=db{% if 'limit' in [p.name for p in endpoint.query_params] %}, skip=offset, limit=limit{% endif %})
+        total = {{ schema_name.lower() if schema_name else 'item' }}.count(db=db)
+        return {
+            "items": items,
+            "total": total,
+            {% if 'limit' in [p.name for p in endpoint.query_params] %}
+            "limit": limit,
+            "offset": offset,
+            {% endif %}
+        }
+        {% elif endpoint.method.upper() == 'POST' %}
+        # Create new item
+        return {{ schema_name.lower() if schema_name else 'item' }}.create(db=db, obj_in=data)
+        {% elif endpoint.method.upper() == 'PUT' %}
+        # Update existing item
+        {% set id_param = endpoint.path_params[0].name if endpoint.path_params else 'id' %}
+        existing = {{ schema_name.lower() if schema_name else 'item' }}.get(db=db, id={{ id_param }})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Item not found")
+        return {{ schema_name.lower() if schema_name else 'item' }}.update(db=db, db_obj=existing, obj_in=data)
+        {% elif endpoint.method.upper() == 'DELETE' %}
+        # Delete item
+        {% set id_param = endpoint.path_params[0].name if endpoint.path_params else 'id' %}
+        existing = {{ schema_name.lower() if schema_name else 'item' }}.get(db=db, id={{ id_param }})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Item not found")
+        {{ schema_name.lower() if schema_name else 'item' }}.remove(db=db, id={{ id_param }})
+        return {"message": "Item deleted successfully"}
+        {% else %}
+        # Generic implementation
+        return {"message": "Endpoint implemented", "method": "{{ endpoint.method.upper() }}"}
+        {% endif %}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in {{ endpoint.function_name }}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+{% endfor %}
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info",
+    )

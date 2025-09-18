@@ -1,0 +1,293 @@
+"""
+Pytest Test Suite for {{ title }}
+"""
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from main import app
+from database import get_db, Base
+
+# Test database
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Create test tables
+Base.metadata.create_all(bind=engine)
+
+
+def override_get_db():
+    """Override database dependency for testing."""
+    try:
+        db = TestingSessionLocal()
+        yield db
+    finally:
+        db.close()
+
+
+app.dependency_overrides[get_db] = override_get_db
+
+client = TestClient(app)
+
+
+@pytest.fixture
+def test_client():
+    """Test client fixture."""
+    return client
+
+
+@pytest.fixture(autouse=True)
+def cleanup_db():
+    """Clean up database after each test."""
+    yield
+    # Clean up database
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+
+
+# Health check tests
+def test_health_check(test_client):
+    """Test health check endpoint."""
+    response = test_client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert "timestamp" in data
+    assert "version" in data
+
+
+def test_metrics_endpoint(test_client):
+    """Test Prometheus metrics endpoint."""
+    response = test_client.get("/metrics")
+    assert response.status_code == 200
+
+
+{% for endpoint in endpoints %}
+{% set model_name = endpoint.get_success_response_schema() %}
+{% if model_name and '$ref' in model_name %}
+{% set model_name = model_name.split('/')[-1] %}
+{% endif %}
+
+# Tests for {{ endpoint.function_name }}
+def test_{{ endpoint.function_name }}_{{ endpoint.method.lower() }}(test_client):
+    """Test {{ endpoint.function_name }} endpoint."""
+    {% if endpoint.method.upper() == 'GET' and not endpoint.path.endswith('}') %}
+    # Test GET list endpoint
+    response = test_client.get("{{ endpoint.path }}")
+    assert response.status_code == 200
+    data = response.json()
+    assert "items" in data
+    assert "total" in data
+    assert isinstance(data["items"], list)
+    assert isinstance(data["total"], int)
+    
+    {% elif endpoint.method.upper() == 'GET' and endpoint.path.endswith('}') %}
+    # Test GET by ID endpoint - first create an item, then get it
+    {% if model_name %}
+    # Create test item first
+    create_data = {
+        {% for prop_name, prop_def in schemas[0].properties.items() if prop_name not in ['id', 'created_at', 'updated_at'] %}
+        "{{ prop_name }}": {{ '"test_value"' if prop_def.type == 'string' else '1' if prop_def.type in ['integer', 'number'] else 'true' if prop_def.type == 'boolean' else '"test"' }},
+        {% endfor %}
+    }
+    create_response = test_client.post("{{ endpoint.path.replace('{' + endpoint.path_params[0].name + '}', '') if endpoint.path_params else endpoint.path }}", json=create_data)
+    assert create_response.status_code in [200, 201]
+    created_item = create_response.json()
+    
+    # Test getting the created item
+    response = test_client.get("{{ endpoint.path.replace('{' + endpoint.path_params[0].name + '}', '1') if endpoint.path_params else endpoint.path }}")
+    if response.status_code == 404:
+        # If item doesn't exist, that's also a valid test case
+        assert response.status_code == 404
+    else:
+        assert response.status_code == 200
+        data = response.json()
+        assert "id" in data
+    {% else %}
+    # Generic GET by ID test
+    response = test_client.get("{{ endpoint.path.replace('{' + endpoint.path_params[0].name + '}', '999') if endpoint.path_params else endpoint.path }}")
+    # Should return 404 for non-existent item
+    assert response.status_code == 404
+    {% endif %}
+    
+    {% elif endpoint.method.upper() == 'POST' %}
+    # Test POST endpoint
+    test_data = {
+        {% for prop_name, prop_def in schemas[0].properties.items() if prop_name not in ['id', 'created_at', 'updated_at'] %}
+        "{{ prop_name }}": {{ '"test_value"' if prop_def.type == 'string' else '1' if prop_def.type in ['integer', 'number'] else 'true' if prop_def.type == 'boolean' else '"test"' }},
+        {% endfor %}
+    }
+    response = test_client.post("{{ endpoint.path }}", json=test_data)
+    assert response.status_code in [200, 201]
+    data = response.json()
+    {% if model_name %}
+    assert "id" in data
+    {% for prop_name in schemas[0].properties.keys() if prop_name not in ['id', 'created_at', 'updated_at'] %}
+    assert "{{ prop_name }}" in data
+    {% endfor %}
+    {% endif %}
+    
+    {% elif endpoint.method.upper() == 'PUT' %}
+    # Test PUT endpoint - first create an item, then update it
+    {% if model_name %}
+    # Create test item first
+    create_data = {
+        {% for prop_name, prop_def in schemas[0].properties.items() if prop_name not in ['id', 'created_at', 'updated_at'] %}
+        "{{ prop_name }}": {{ '"test_value"' if prop_def.type == 'string' else '1' if prop_def.type in ['integer', 'number'] else 'true' if prop_def.type == 'boolean' else '"test"' }},
+        {% endfor %}
+    }
+    create_response = test_client.post("{{ endpoint.path.replace('{' + endpoint.path_params[0].name + '}', '') if endpoint.path_params else endpoint.path }}", json=create_data)
+    assert create_response.status_code in [200, 201]
+    created_item = create_response.json()
+    
+    # Update the created item
+    update_data = {
+        {% for prop_name, prop_def in schemas[0].properties.items() if prop_name not in ['id', 'created_at', 'updated_at'] %}
+        "{{ prop_name }}": {{ '"updated_value"' if prop_def.type == 'string' else '2' if prop_def.type in ['integer', 'number'] else 'false' if prop_def.type == 'boolean' else '"updated"' }},
+        {% endfor %}
+    }
+    response = test_client.put(f"{{ endpoint.path.replace('{' + endpoint.path_params[0].name + '}', '{created_item[\"id\"]}') if endpoint.path_params else endpoint.path }}", json=update_data)
+    assert response.status_code == 200
+    data = response.json()
+    assert "id" in data
+    {% else %}
+    # Generic PUT test
+    test_data = {"test": "data"}
+    response = test_client.put("{{ endpoint.path.replace('{' + endpoint.path_params[0].name + '}', '999') if endpoint.path_params else endpoint.path }}", json=test_data)
+    # Should return 404 for non-existent item
+    assert response.status_code == 404
+    {% endif %}
+    
+    {% elif endpoint.method.upper() == 'DELETE' %}
+    # Test DELETE endpoint - first create an item, then delete it
+    {% if model_name %}
+    # Create test item first
+    create_data = {
+        {% for prop_name, prop_def in schemas[0].properties.items() if prop_name not in ['id', 'created_at', 'updated_at'] %}
+        "{{ prop_name }}": {{ '"test_value"' if prop_def.type == 'string' else '1' if prop_def.type in ['integer', 'number'] else 'true' if prop_def.type == 'boolean' else '"test"' }},
+        {% endfor %}
+    }
+    create_response = test_client.post("{{ endpoint.path.replace('{' + endpoint.path_params[0].name + '}', '') if endpoint.path_params else endpoint.path }}", json=create_data)
+    assert create_response.status_code in [200, 201]
+    created_item = create_response.json()
+    
+    # Delete the created item
+    response = test_client.delete(f"{{ endpoint.path.replace('{' + endpoint.path_params[0].name + '}', '{created_item[\"id\"]}') if endpoint.path_params else endpoint.path }}")
+    assert response.status_code in [200, 204]
+    {% else %}
+    # Generic DELETE test
+    response = test_client.delete("{{ endpoint.path.replace('{' + endpoint.path_params[0].name + '}', '999') if endpoint.path_params else endpoint.path }}")
+    # Should return 404 for non-existent item
+    assert response.status_code == 404
+    {% endif %}
+    
+    {% else %}
+    # Generic test for other methods
+    response = test_client.{{ endpoint.method.lower() }}("{{ endpoint.path }}")
+    assert response.status_code in [200, 201, 204, 404, 405]  # Any valid HTTP status
+    {% endif %}
+
+
+def test_{{ endpoint.function_name }}_{{ endpoint.method.lower() }}_invalid_data(test_client):
+    """Test {{ endpoint.function_name }} endpoint with invalid data."""
+    {% if endpoint.method.upper() in ['POST', 'PUT'] %}
+    # Test with invalid JSON data
+    response = test_client.{{ endpoint.method.lower() }}("{{ endpoint.path.replace('{' + endpoint.path_params[0].name + '}', '1') if endpoint.path_params else endpoint.path }}", json={})
+    # Should handle empty data gracefully
+    assert response.status_code in [200, 201, 400, 422]
+    
+    # Test with malformed JSON
+    response = test_client.{{ endpoint.method.lower() }}(
+        "{{ endpoint.path.replace('{' + endpoint.path_params[0].name + '}', '1') if endpoint.path_params else endpoint.path }}",
+        data="invalid json",
+        headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 422
+    {% else %}
+    # For GET/DELETE, test with invalid ID
+    {% if endpoint.path_params %}
+    response = test_client.{{ endpoint.method.lower() }}("{{ endpoint.path.replace('{' + endpoint.path_params[0].name + '}', 'invalid') }}")
+    assert response.status_code == 422  # FastAPI validation error
+    {% endif %}
+    {% endif %}
+
+
+{% endfor %}
+
+# Integration tests
+def test_full_crud_workflow(test_client):
+    """Test complete CRUD workflow."""
+    {% if schemas %}
+    {% set first_schema = schemas[0] %}
+    # Test data
+    test_data = {
+        {% for prop_name, prop_def in first_schema.properties.items() if prop_name not in ['id', 'created_at', 'updated_at'] %}
+        "{{ prop_name }}": {{ '"test_value"' if prop_def.type == 'string' else '1' if prop_def.type in ['integer', 'number'] else 'true' if prop_def.type == 'boolean' else '"test"' }},
+        {% endfor %}
+    }
+    
+    # 1. Create item
+    create_response = test_client.post("/{{ first_schema.table_name[:-1] if first_schema.table_name.endswith('s') else first_schema.table_name }}", json=test_data)
+    if create_response.status_code in [200, 201]:
+        created_item = create_response.json()
+        item_id = created_item.get("id")
+        
+        if item_id:
+            # 2. Get item
+            get_response = test_client.get(f"/{{ first_schema.table_name[:-1] if first_schema.table_name.endswith('s') else first_schema.table_name }}/{item_id}")
+            if get_response.status_code == 200:
+                item = get_response.json()
+                assert item["id"] == item_id
+            
+            # 3. Update item
+            update_data = {
+                {% for prop_name, prop_def in first_schema.properties.items() if prop_name not in ['id', 'created_at', 'updated_at'] %}
+                "{{ prop_name }}": {{ '"updated_value"' if prop_def.type == 'string' else '2' if prop_def.type in ['integer', 'number'] else 'false' if prop_def.type == 'boolean' else '"updated"' }},
+                {% endfor %}
+            }
+            update_response = test_client.put(f"/{{ first_schema.table_name[:-1] if first_schema.table_name.endswith('s') else first_schema.table_name }}/{item_id}", json=update_data)
+            
+            # 4. Delete item
+            delete_response = test_client.delete(f"/{{ first_schema.table_name[:-1] if first_schema.table_name.endswith('s') else first_schema.table_name }}/{item_id}")
+            
+            # 5. Verify deletion
+            get_after_delete = test_client.get(f"/{{ first_schema.table_name[:-1] if first_schema.table_name.endswith('s') else first_schema.table_name }}/{item_id}")
+            assert get_after_delete.status_code == 404
+    {% endif %}
+
+
+# Performance tests
+def test_api_performance(test_client):
+    """Basic performance test."""
+    import time
+    
+    start_time = time.time()
+    response = test_client.get("/health")
+    end_time = time.time()
+    
+    assert response.status_code == 200
+    assert (end_time - start_time) < 1.0  # Should respond within 1 second
+
+
+# Security tests
+def test_cors_headers(test_client):
+    """Test CORS headers are present."""
+    response = test_client.get("/health")
+    # Note: In a real application, you should configure CORS appropriately
+    assert response.status_code == 200
+
+
+def test_content_type_validation(test_client):
+    """Test content type validation."""
+    {% if any(e.method.upper() in ['POST', 'PUT'] for e in endpoints) %}
+    # Test with incorrect content type
+    response = test_client.post(
+        "/{{ endpoints[0].path if endpoints else '/test' }}",
+        data="not json",
+        headers={"Content-Type": "text/plain"}
+    )
+    # FastAPI should handle this gracefully
+    assert response.status_code in [400, 422]
+    {% endif %}

@@ -1,0 +1,2141 @@
+openapi: 3.0.3
+info:
+  title: Social Media Platform API
+  description: |
+    A comprehensive social media platform API that enables users to create profiles,
+    share posts, interact through likes and comments, follow other users, and manage
+    their social network.
+    
+    Features include:
+    - User registration and authentication
+    - Profile management with photos and bio
+    - Post creation with text, images, and videos
+    - Social interactions (likes, comments, shares)
+    - Follow/unfollow functionality
+    - Real-time messaging and notifications
+    - Content moderation and reporting
+    - Analytics and insights
+  version: 1.5.0
+  contact:
+    name: Social Media API Team
+    email: api@socialmedia.com
+    url: https://socialmedia.com/developers
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+servers:
+  - url: https://api.socialmedia.com/v1
+    description: Production server
+  - url: https://staging-api.socialmedia.com/v1
+    description: Staging server
+  - url: http://localhost:8000/v1
+    description: Local development server
+tags:
+  - name: auth
+    description: Authentication and authorization
+  - name: users
+    description: User management and profiles
+  - name: posts
+    description: Post creation and management
+  - name: social
+    description: Social interactions (likes, comments, follows)
+  - name: messaging
+    description: Direct messaging between users
+  - name: notifications
+    description: User notifications and alerts
+  - name: feed
+    description: User feed and timeline
+  - name: search
+    description: Search functionality
+  - name: media
+    description: Media upload and management
+  - name: moderation
+    description: Content moderation and reporting
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new user
+      description: Create a new user account
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegistration'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Username or email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: User login
+      description: Authenticate user and return JWT token
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: User logout
+      description: Invalidate user session and tokens
+      operationId: logoutUser
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Logout successful
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/me:
+    get:
+      tags: [users]
+      summary: Get current user profile
+      description: Get the authenticated user's profile
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [users]
+      summary: Update current user profile
+      description: Update the authenticated user's profile information
+      operationId: updateCurrentUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfileUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserProfileUpdateWithAvatar'
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/{user_id}:
+    get:
+      tags: [users]
+      summary: Get user profile by ID
+      description: Get a user's public profile information
+      operationId: getUserById
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUserProfile'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/{username}:
+    get:
+      tags: [users]
+      summary: Get user profile by username
+      description: Get a user's public profile information by username
+      operationId: getUserByUsername
+      parameters:
+        - name: username
+          in: path
+          required: true
+          description: Username
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUserProfile'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/search:
+    get:
+      tags: [search, users]
+      summary: Search users
+      description: Search for users by username, display name, or email
+      operationId: searchUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query
+          schema:
+            type: string
+            minLength: 2
+        - name: limit
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Search results retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSearchResponse'
+        '400':
+          description: Invalid search query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /posts:
+    get:
+      tags: [posts]
+      summary: Get posts
+      description: Get a paginated list of posts
+      operationId: getPosts
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of posts per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: user_id
+          in: query
+          description: Filter posts by user ID
+          schema:
+            type: integer
+            format: int64
+        - name: sort
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [recent, popular, trending]
+            default: recent
+      responses:
+        '200':
+          description: Posts retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [posts]
+      summary: Create a new post
+      description: Create a new post with text and optional media
+      operationId: createPost
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PostCreateWithMedia'
+      responses:
+        '201':
+          description: Post created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /posts/{post_id}:
+    get:
+      tags: [posts]
+      summary: Get post by ID
+      description: Get detailed information about a specific post
+      operationId: getPostById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          description: Post ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Post retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostDetail'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [posts]
+      summary: Update post
+      description: Update an existing post (only by the author)
+      operationId: updatePost
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          description: Post ID
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostUpdate'
+      responses:
+        '200':
+          description: Post updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the post author
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [posts]
+      summary: Delete post
+      description: Delete a post (only by the author)
+      operationId: deletePost
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          description: Post ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Post deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the post author
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /posts/{post_id}/like:
+    post:
+      tags: [social]
+      summary: Like a post
+      description: Like or unlike a post
+      operationId: likePost
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          description: Post ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Post liked/unliked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikeResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /posts/{post_id}/comments:
+    get:
+      tags: [social]
+      summary: Get post comments
+      description: Get comments for a specific post
+      operationId: getPostComments
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          description: Post ID
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of comments per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Comments retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentListResponse'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [social]
+      summary: Add comment to post
+      description: Add a new comment to a post
+      operationId: addComment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          description: Post ID
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentCreate'
+      responses:
+        '201':
+          description: Comment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /comments/{comment_id}:
+    put:
+      tags: [social]
+      summary: Update comment
+      description: Update an existing comment (only by the author)
+      operationId: updateComment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          description: Comment ID
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentUpdate'
+      responses:
+        '200':
+          description: Comment updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the comment author
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Comment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [social]
+      summary: Delete comment
+      description: Delete a comment (only by the author)
+      operationId: deleteComment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          description: Comment ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Comment deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the comment author
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Comment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/{user_id}/follow:
+    post:
+      tags: [social]
+      summary: Follow/unfollow user
+      description: Follow or unfollow another user
+      operationId: followUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: User ID to follow/unfollow
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Follow status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Cannot follow yourself
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/{user_id}/followers:
+    get:
+      tags: [social]
+      summary: Get user followers
+      description: Get a list of users who follow the specified user
+      operationId: getUserFollowers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of followers per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Followers retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/{user_id}/following:
+    get:
+      tags: [social]
+      summary: Get users being followed
+      description: Get a list of users that the specified user follows
+      operationId: getUserFollowing
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of users per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Following list retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /feed:
+    get:
+      tags: [feed]
+      summary: Get user feed
+      description: Get personalized feed of posts from followed users
+      operationId: getUserFeed
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of posts per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: algorithm
+          in: query
+          description: Feed algorithm
+          schema:
+            type: string
+            enum: [chronological, relevance, trending]
+            default: relevance
+      responses:
+        '200':
+          description: Feed retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /messages:
+    get:
+      tags: [messaging]
+      summary: Get conversations
+      description: Get all conversations for the current user
+      operationId: getConversations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of conversations per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: Conversations retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [messaging]
+      summary: Start new conversation
+      description: Start a new conversation with another user
+      operationId: startConversation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationCreate'
+      responses:
+        '201':
+          description: Conversation created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /messages/{conversation_id}:
+    get:
+      tags: [messaging]
+      summary: Get conversation messages
+      description: Get messages in a specific conversation
+      operationId: getConversationMessages
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          description: Conversation ID
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of messages per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: before
+          in: query
+          description: Get messages before this message ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Messages retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageListResponse'
+        '403':
+          description: Forbidden - Not a participant in this conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Conversation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [messaging]
+      summary: Send message
+      description: Send a new message in a conversation
+      operationId: sendMessage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          description: Conversation ID
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MessageCreateWithMedia'
+      responses:
+        '201':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not a participant in this conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Conversation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /notifications:
+    get:
+      tags: [notifications]
+      summary: Get notifications
+      description: Get notifications for the current user
+      operationId: getNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: unread_only
+          in: query
+          description: Return only unread notifications
+          schema:
+            type: boolean
+            default: false
+        - name: type
+          in: query
+          description: Filter by notification type
+          schema:
+            type: string
+            enum: [like, comment, follow, message, mention]
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of notifications per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Notifications retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /notifications/{notification_id}/read:
+    post:
+      tags: [notifications]
+      summary: Mark notification as read
+      description: Mark a specific notification as read
+      operationId: markNotificationRead
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          description: Notification ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Notification marked as read
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Notification not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /notifications/read-all:
+    post:
+      tags: [notifications]
+      summary: Mark all notifications as read
+      description: Mark all notifications as read for the current user
+      operationId: markAllNotificationsRead
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: All notifications marked as read
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /search:
+    get:
+      tags: [search]
+      summary: Global search
+      description: Search across posts and users
+      operationId: globalSearch
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query
+          schema:
+            type: string
+            minLength: 2
+        - name: type
+          in: query
+          description: Type of content to search
+          schema:
+            type: string
+            enum: [all, posts, users]
+            default: all
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of results per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: Search results retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          description: Invalid search query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /media/upload:
+    post:
+      tags: [media]
+      summary: Upload media file
+      description: Upload an image or video file
+      operationId: uploadMedia
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MediaUpload'
+      responses:
+        '201':
+          description: Media uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaFile'
+        '400':
+          description: Invalid file or file too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /reports:
+    post:
+      tags: [moderation]
+      summary: Report content
+      description: Report a post or user for inappropriate content
+      operationId: reportContent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportCreate'
+      responses:
+        '201':
+          description: Report submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    UserRegistration:
+      type: object
+      required: [username, email, password, display_name]
+      properties:
+        username:
+          type: string
+          pattern: '^[a-zA-Z0-9_]{3,30}$'
+          example: "johndoe123"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        password:
+          type: string
+          minLength: 8
+          example: "password123"
+        display_name:
+          type: string
+          maxLength: 50
+          example: "John Doe"
+        bio:
+          type: string
+          maxLength: 500
+          example: "Software developer and photographer"
+        date_of_birth:
+          type: string
+          format: date
+          example: "1990-01-01"
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: "johndoe123"
+        password:
+          type: string
+          example: "password123"
+    LoginResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refresh_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        token_type:
+          type: string
+          example: "Bearer"
+        expires_in:
+          type: integer
+          example: 3600
+        user:
+          $ref: '#/components/schemas/UserResponse'
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        username:
+          type: string
+          example: "johndoe123"
+        display_name:
+          type: string
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        avatar_url:
+          type: string
+          format: uri
+          example: "https://example.com/avatars/user1.jpg"
+        is_verified:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        username:
+          type: string
+          example: "johndoe123"
+        display_name:
+          type: string
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        bio:
+          type: string
+          example: "Software developer and photographer"
+        avatar_url:
+          type: string
+          format: uri
+          example: "https://example.com/avatars/user1.jpg"
+        cover_photo_url:
+          type: string
+          format: uri
+          example: "https://example.com/covers/user1.jpg"
+        location:
+          type: string
+          example: "San Francisco, CA"
+        website:
+          type: string
+          format: uri
+          example: "https://johndoe.com"
+        date_of_birth:
+          type: string
+          format: date
+          example: "1990-01-01"
+        is_verified:
+          type: boolean
+          example: false
+        is_private:
+          type: boolean
+          example: false
+        follower_count:
+          type: integer
+          example: 150
+        following_count:
+          type: integer
+          example: 200
+        post_count:
+          type: integer
+          example: 45
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+    PublicUserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        username:
+          type: string
+          example: "johndoe123"
+        display_name:
+          type: string
+          example: "John Doe"
+        bio:
+          type: string
+          example: "Software developer and photographer"
+        avatar_url:
+          type: string
+          format: uri
+          example: "https://example.com/avatars/user1.jpg"
+        cover_photo_url:
+          type: string
+          format: uri
+          example: "https://example.com/covers/user1.jpg"
+        location:
+          type: string
+          example: "San Francisco, CA"
+        website:
+          type: string
+          format: uri
+          example: "https://johndoe.com"
+        is_verified:
+          type: boolean
+          example: false
+        is_private:
+          type: boolean
+          example: false
+        is_following:
+          type: boolean
+          example: false
+        is_followed_by:
+          type: boolean
+          example: false
+        follower_count:
+          type: integer
+          example: 150
+        following_count:
+          type: integer
+          example: 200
+        post_count:
+          type: integer
+          example: 45
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+    UserProfileUpdate:
+      type: object
+      properties:
+        display_name:
+          type: string
+          maxLength: 50
+          example: "John Doe"
+        bio:
+          type: string
+          maxLength: 500
+          example: "Software developer and photographer"
+        location:
+          type: string
+          maxLength: 100
+          example: "San Francisco, CA"
+        website:
+          type: string
+          format: uri
+          example: "https://johndoe.com"
+        is_private:
+          type: boolean
+          example: false
+    UserProfileUpdateWithAvatar:
+      allOf:
+        - $ref: '#/components/schemas/UserProfileUpdate'
+        - type: object
+          properties:
+            avatar:
+              type: string
+              format: binary
+            cover_photo:
+              type: string
+              format: binary
+    Post:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        user_id:
+          type: integer
+          format: int64
+          example: 1
+        user:
+          $ref: '#/components/schemas/PublicUserProfile'
+        content:
+          type: string
+          example: "Just had an amazing day at the beach! 🏖️"
+        media_urls:
+          type: array
+          items:
+            type: string
+            format: uri
+          example: ["https://example.com/media/post1-image1.jpg"]
+        media_type:
+          type: string
+          enum: [none, image, video, carousel]
+          example: "image"
+        like_count:
+          type: integer
+          example: 42
+        comment_count:
+          type: integer
+          example: 8
+        share_count:
+          type: integer
+          example: 3
+        is_liked:
+          type: boolean
+          example: false
+        visibility:
+          type: string
+          enum: [public, private, friends]
+          example: "public"
+        location:
+          type: string
+          example: "Santa Monica Beach, CA"
+        hashtags:
+          type: array
+          items:
+            type: string
+          example: ["beach", "summer", "vacation"]
+        mentions:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserMention'
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+    PostDetail:
+      allOf:
+        - $ref: '#/components/schemas/Post'
+        - type: object
+          properties:
+            recent_comments:
+              type: array
+              items:
+                $ref: '#/components/schemas/Comment'
+            recent_likes:
+              type: array
+              items:
+                $ref: '#/components/schemas/PublicUserProfile'
+    PostCreate:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          maxLength: 2200
+          example: "Just had an amazing day at the beach! 🏖️"
+        visibility:
+          type: string
+          enum: [public, private, friends]
+          default: public
+          example: "public"
+        location:
+          type: string
+          maxLength: 100
+          example: "Santa Monica Beach, CA"
+        media_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+          example: [1, 2]
+    PostCreateWithMedia:
+      allOf:
+        - $ref: '#/components/schemas/PostCreate'
+        - type: object
+          properties:
+            media:
+              type: array
+              items:
+                type: string
+                format: binary
+    PostUpdate:
+      type: object
+      properties:
+        content:
+          type: string
+          maxLength: 2200
+          example: "Updated: Just had an amazing day at the beach! 🏖️"
+        visibility:
+          type: string
+          enum: [public, private, friends]
+          example: "public"
+        location:
+          type: string
+          maxLength: 100
+          example: "Santa Monica Beach, CA"
+    PostListResponse:
+      type: object
+      properties:
+        posts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Post'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+    Comment:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        post_id:
+          type: integer
+          format: int64
+          example: 1
+        user_id:
+          type: integer
+          format: int64
+          example: 2
+        user:
+          $ref: '#/components/schemas/PublicUserProfile'
+        content:
+          type: string
+          example: "Great photo! Looks like you had fun!"
+        like_count:
+          type: integer
+          example: 5
+        is_liked:
+          type: boolean
+          example: false
+        parent_comment_id:
+          type: integer
+          format: int64
+          example: null
+        reply_count:
+          type: integer
+          example: 2
+        mentions:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserMention'
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:30:00Z"
+    CommentCreate:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          maxLength: 500
+          example: "Great photo! Looks like you had fun!"
+        parent_comment_id:
+          type: integer
+          format: int64
+          example: null
+    CommentUpdate:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          maxLength: 500
+          example: "Updated: Great photo! Looks like you had fun!"
+    CommentListResponse:
+      type: object
+      properties:
+        comments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Comment'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+    UserMention:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          format: int64
+          example: 1
+        username:
+          type: string
+          example: "johndoe123"
+        display_name:
+          type: string
+          example: "John Doe"
+        start_index:
+          type: integer
+          example: 15
+        end_index:
+          type: integer
+          example: 27
+    LikeResponse:
+      type: object
+      properties:
+        liked:
+          type: boolean
+          example: true
+        like_count:
+          type: integer
+          example: 43
+    FollowResponse:
+      type: object
+      properties:
+        following:
+          type: boolean
+          example: true
+        follower_count:
+          type: integer
+          example: 151
+    UserListResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicUserProfile'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+    UserSearchResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicUserProfile'
+        total_count:
+          type: integer
+          example: 25
+        query:
+          type: string
+          example: "john"
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicUserProfile'
+        last_message:
+          $ref: '#/components/schemas/Message'
+        unread_count:
+          type: integer
+          example: 2
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+    ConversationCreate:
+      type: object
+      required: [participant_id, content]
+      properties:
+        participant_id:
+          type: integer
+          format: int64
+          example: 2
+        content:
+          type: string
+          maxLength: 1000
+          example: "Hey! How are you doing?"
+    ConversationListResponse:
+      type: object
+      properties:
+        conversations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Conversation'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        conversation_id:
+          type: integer
+          format: int64
+          example: 1
+        sender_id:
+          type: integer
+          format: int64
+          example: 1
+        sender:
+          $ref: '#/components/schemas/PublicUserProfile'
+        content:
+          type: string
+          example: "Hey! How are you doing?"
+        media_url:
+          type: string
+          format: uri
+          example: "https://example.com/media/message1.jpg"
+        media_type:
+          type: string
+          enum: [none, image, video, file]
+          example: "none"
+        is_read:
+          type: boolean
+          example: false
+        read_at:
+          type: string
+          format: date-time
+          example: null
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+    MessageCreate:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          maxLength: 1000
+          example: "Hey! How are you doing?"
+    MessageCreateWithMedia:
+      allOf:
+        - $ref: '#/components/schemas/MessageCreate'
+        - type: object
+          properties:
+            media:
+              type: string
+              format: binary
+    MessageListResponse:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        user_id:
+          type: integer
+          format: int64
+          example: 1
+        type:
+          type: string
+          enum: [like, comment, follow, message, mention, post_shared]
+          example: "like"
+        title:
+          type: string
+          example: "New like on your post"
+        message:
+          type: string
+          example: "johndoe123 liked your post"
+        data:
+          type: object
+          additionalProperties: true
+          example:
+            post_id: 1
+            user_id: 2
+        is_read:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+    NotificationListResponse:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+        unread_count:
+          type: integer
+          example: 5
+    SearchResponse:
+      type: object
+      properties:
+        posts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Post'
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicUserProfile'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+        query:
+          type: string
+          example: "vacation photos"
+        total_count:
+          type: integer
+          example: 87
+    MediaFile:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        url:
+          type: string
+          format: uri
+          example: "https://example.com/media/file1.jpg"
+        thumbnail_url:
+          type: string
+          format: uri
+          example: "https://example.com/media/thumbnails/file1.jpg"
+        file_name:
+          type: string
+          example: "vacation_photo.jpg"
+        file_size:
+          type: integer
+          example: 1024000
+        mime_type:
+          type: string
+          example: "image/jpeg"
+        width:
+          type: integer
+          example: 1920
+        height:
+          type: integer
+          example: 1080
+        duration:
+          type: number
+          format: float
+          example: null
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+    MediaUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+        description:
+          type: string
+          maxLength: 200
+          example: "Vacation photo from the beach"
+    Report:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        reporter_id:
+          type: integer
+          format: int64
+          example: 1
+        content_type:
+          type: string
+          enum: [post, comment, user, message]
+          example: "post"
+        content_id:
+          type: integer
+          format: int64
+          example: 1
+        reason:
+          type: string
+          enum: [spam, harassment, inappropriate_content, copyright, fake_news, other]
+          example: "inappropriate_content"
+        description:
+          type: string
+          example: "This post contains offensive language"
+        status:
+          type: string
+          enum: [pending, reviewing, resolved, dismissed]
+          example: "pending"
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+    ReportCreate:
+      type: object
+      required: [content_type, content_id, reason]
+      properties:
+        content_type:
+          type: string
+          enum: [post, comment, user, message]
+          example: "post"
+        content_id:
+          type: integer
+          format: int64
+          example: 1
+        reason:
+          type: string
+          enum: [spam, harassment, inappropriate_content, copyright, fake_news, other]
+          example: "inappropriate_content"
+        description:
+          type: string
+          maxLength: 500
+          example: "This post contains offensive language"
+    PaginationInfo:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total_pages:
+          type: integer
+          example: 5
+        total_items:
+          type: integer
+          example: 95
+        has_next:
+          type: boolean
+          example: true
+        has_previous:
+          type: boolean
+          example: false
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: "VALIDATION_ERROR"
+            message:
+              type: string
+              example: "The provided input is invalid"
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                    example: "username"
+                  message:
+                    type: string
+                    example: "Username must be between 3 and 30 characters"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+        request_id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from the login endpoint
