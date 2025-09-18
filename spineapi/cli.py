@@ -19,14 +19,24 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-from rich.console import Console
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.table import Table
 
-from spineapi.generators.main import CodeGenerator
-from spineapi.parsers.openapi import OpenAPIParser
-from spineapi.llm.enhancer import LLMEnhancer
+# Optional imports - gracefully handle missing dependencies
+try:
+    from spineapi.generators.main import CodeGenerator
+    from spineapi.parsers.openapi import OpenAPIParser
+    from spineapi.llm.enhancer import LLMEnhancer
+    HAS_CORE_MODULES = True
+except ImportError as e:
+    logger.warning(f"Core modules not available: {e}")
+    CodeGenerator = None
+    OpenAPIParser = None
+    LLMEnhancer = None
+    HAS_CORE_MODULES = False
+
+try:
+    from spineapi.__version__ import __version__
+except ImportError:
+    __version__ = "0.1.0"
 
 app = typer.Typer(
     name="spineapi",
@@ -197,6 +207,11 @@ def generate(
         # Parse OpenAPI spec
         task = progress.add_task("🔍 Parsing OpenAPI specification...", total=None)
         try:
+            if not HAS_CORE_MODULES or OpenAPIParser is None:
+                progress.update(task, description="❌ Core modules not available")
+                console.print("Error: SpineAPI core modules not properly installed", style="red")
+                raise typer.Exit(1)
+            
             parser = OpenAPIParser()
             spec_data = parser.parse(spec_path)
             progress.update(task, description="✅ OpenAPI spec parsed successfully")
@@ -210,8 +225,13 @@ def generate(
         if enable_llm:
             task = progress.add_task("🤖 Initializing LLM enhancer...", total=None)
             try:
-                llm_enhancer = LLMEnhancer(provider=llm_provider)
-                progress.update(task, description="✅ LLM enhancer ready")
+                if LLMEnhancer is None:
+                    progress.update(task, description="⚠️  LLM modules not available")
+                    console.print("Warning: LLM enhancement not available", style="yellow")
+                    enable_llm = False
+                else:
+                    llm_enhancer = LLMEnhancer(provider=llm_provider)
+                    progress.update(task, description="✅ LLM enhancer ready")
             except Exception as e:
                 progress.update(task, description="⚠️  LLM enhancement disabled")
                 console.print(f"Warning: {e}", style="yellow")
@@ -220,6 +240,11 @@ def generate(
         # Generate code
         task = progress.add_task("🏗️  Generating backend application...", total=None)
         try:
+            if CodeGenerator is None:
+                progress.update(task, description="❌ Code generator not available")
+                console.print("Error: Code generation modules not properly installed", style="red")
+                raise typer.Exit(1)
+            
             generator = CodeGenerator(
                 framework=framework,
                 database=database,
@@ -300,6 +325,11 @@ def validate(
         task = progress.add_task("🔍 Validating OpenAPI specification...", total=None)
         
         try:
+            if not HAS_CORE_MODULES or OpenAPIParser is None:
+                progress.update(task, description="❌ Core modules not available")
+                console.print("Error: SpineAPI core modules not properly installed", style="red")
+                raise typer.Exit(1)
+            
             parser = OpenAPIParser()
             parser.validate(spec_path)
             progress.update(task, description="✅ OpenAPI spec is valid")
